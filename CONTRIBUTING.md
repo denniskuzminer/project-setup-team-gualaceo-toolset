@@ -1,5 +1,39 @@
 # Guide to Contributing
 
+### Instructions for Building and Testing
+
+#### Building
+
+Important Note: your IP address must be whitelisted on mongoDB before you can run the server on your machine. You can ask Dennis to take care of this.
+- Clone the repository (`git clone https://github.com/agile-dev-assignments/project-setup-team-gualaceo-toolset.git`)
+- Enter the main directory (`cd project-setup-team-gualaceo-toolset`)
+- Move the provided .env files (ask a project member for these) into their corresponding folders (/back-end/.env and /front-end/.env) 
+- Enter the front-end directory (`cd front-end`)
+- run `npm install`
+- run `npm start`
+- Initialize a new shell and navgigate to the main directory
+- Enter the back-end directory (`cd back-end`)
+- run `npm install`
+- run `npm start`
+- You should now be able to access our site at http://localhost:3000 (Note: It is recommended you use responsive design mode in your browser, as the site is designed for mobile devices)
+- You can also send requests to the back-end at http://localhost:5000
+
+#### Testing
+
+If you'd like to run our built in chai integration tests, do the following while the back-end is running
+- Acquire a bearer token from Spotify
+    - Visit this page https://developer.spotify.com/console/get-search-item/
+    - Scroll down to where it says OAuth token
+    - Click the corresponding button on the right (Get token)
+    - Click "request token" on the popup that shows up
+    - Copy the text which now exists in the textbox under Oauth token (Make sure to select all before copying)
+- Enter the back-end directory in a new shell
+- run `npm run test --bearer=<your bearer token>`
+
+### Assisting Technologies
+
+- Regarding our technologies, we will be using VS Code along with the extension Live Share to collaborate on this project.
+
 ### Project's Values and Team Norms
 
 - Consistent communication - Members should feel free to disclose any issues, concerns, or recommendations they have regarding the project.
@@ -28,6 +62,8 @@
 
 - When writing code, developers should leave clear comments about what their code is doing.
 
+- Use 2 space size indents/tabs
+
 ### Conflict Resolution
 
 - Please communicate any conflicts with the Scrum Master, Product Owner, or the team as a whole.
@@ -45,9 +81,3 @@
 - Please note that this will be the Zoom ID for our meetings: 202 317 5679.
 
 - We will meet for the Daily Scrum on Tuesdays, Thursdays, and Saturdays at 11AM EST.
-
-### Project Setup
-
-- Regarding our technologies, we will be using VS Code along with the extension Live Share to collaborate on this project.
-
-- This information will be provided in the [README.md](./README.md)

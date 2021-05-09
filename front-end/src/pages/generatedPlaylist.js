@@ -1,93 +1,290 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Container, CssBaseline, AppBar, Toolbar } from "@material-ui/core";
-import Avatar from "@material-ui/core/avatar";
-import Accordion from "@material-ui/core/Accordion";
-import TextField from "@material-ui/core/TextField";
-import AccordionDetails from "@material-ui/core/AccordionDetails";
-import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
-import AccordionSummary from "@material-ui/core/AccordionSummary";
+import Avatar from "@material-ui/core/Avatar";
 import withStyles from "@material-ui/core/styles/withStyles";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import Button from "@material-ui/core/Button";
 import ArrowBackIosIcon from "@material-ui/icons/ArrowBackIos";
-import { Typography, Card, CardContent, Divider } from "@material-ui/core";
+import { Typography, CardContent } from "@material-ui/core";
 import Box from "@material-ui/core/Box";
-import Dialog from "@material-ui/core/Dialog";
-import DialogActions from "@material-ui/core/DialogActions";
-import DialogContent from "@material-ui/core/DialogContent";
-import DialogContentText from "@material-ui/core/DialogContentText";
-import DialogTitle from "@material-ui/core/DialogTitle";
 
 import backgroundWhite from "../media/background_white.png";
+import Error from "../components/error";
 
 import Loading from "../components/loading";
 import Logout from "../components/logout";
 import MusicController from "../components/musiccontroller";
-
+import IconButton from "@material-ui/core/IconButton";
+import RemoveIcon from "@material-ui/icons/Remove";
 import styles from "../styles/generatedPlaylistStyles";
+import axios from "axios";
+import {
+  set_authentication,
+  is_expired,
+  get_bearer,
+} from "../components/authentication";
+
+require("dotenv").config();
+const back_end_uri = process.env.REACT_APP_BACK_END_URI;
 
 const Playlist = (props) => {
   let history = useHistory();
+  let location = useLocation();
+  let state = location.state;
+  let group_id = state.id;
+  let playlist_id = state.generated_playlist_id;
+  const {
+    match: { params },
+  } = props;
   const { classes } = props;
   const [uiLoading, setuiLoading] = useState(true);
   const [openConfirmLogout, setOpenConfirmLogout] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [expandPlayer, setExpandPlayer] = useState(false);
   const [currentSong, setCurrentSong] = useState("");
+  const [members, setMembers] = useState([]);
+  let [isOwner, setIsOwner] = useState(params.userStatus === "owner"); //params.userStatus is whatever comes after /generatedPlaylist/ in the url
+  let [isGuest, setIsGuest] = useState(params.userStatus === "guest");
+  const [refreshCount, setRefreshCount] = useState(0)
+  const [songs, setSongs] = useState([]);
+  const [playlistAvatar, setPlaylistAvatar] = useState("");
+  const previousSongsRef = useRef(songs);
+  const [copied, setCopied] = useState("");
 
-  const songs = [
-    {
-      artist: "Aphex Twin",
-      title: "Xtal",
-    },
-    {
-      artist: "Tyler, The Creator",
-      title: "Yonkers",
-    },
-    {
-      artist: "Billie Eilish",
-      title: "Bad Guy",
-    },
-    {
-      artist: "The Beetles",
-      title: "Here Comes the Sun",
-    },
-    {
-      artist: "Daft Punk",
-      title: "Emotion",
-    },
-    {
-      artist: "Aphex Twin",
-      title: "Avril 14th",
-    },
-    {
-      artist: "The Doors",
-      title: "Riders on the Storm",
-    },
-    {
-      artist: "Daft Punk",
-      title: "Too Long",
-    },
-    {
-      artist: "100 Gecs",
-      title: "Money Machine",
-    },
-    {
-      artist: "Rebecca Black",
-      title: "Friday",
-    },
-    {
-      artist: "Death Grips",
-      title: "Guillotine",
-    },
-  ];
+  const handleAddMusic = () => {
+    history.push({
+      pathname: "/addSongs",
+      state: state,
+    });
+  };
+
+  const handleGoBack = () => {
+    if (isOwner) {
+      history.push({
+        pathname: "/groupMenuOwner/generated",
+        state: state,
+      });
+    } 
+    else{
+      history.push({
+        pathname: "/groupMenu/generated",
+        state: state,
+      });
+    }
+  };
+
+  const refreshPage = () => {
+    setSongs([])
+    axios({
+      method: "get",
+      url: `${back_end_uri}/groups/get_generated_playlist/${group_id}/${get_bearer(
+        localStorage
+      )}`,
+    })
+      .then((res) => {
+        axios({
+          method: "get",
+          url: `https://api.spotify.com/v1/playlists/${location.state.generated_playlist_id}`,
+        })
+          .then((response) => {
+            setPlaylistAvatar(response.data.images[0].url);
+          })
+          .catch((err) => console.log(err));
+        axios(
+          `${back_end_uri}/groups/get_members_and_owners/${group_id}/${get_bearer(
+            localStorage
+          )}`
+        )
+          .then((res) => {
+            console.log(res);
+            setMembers(res.data.members);
+          })
+          .catch((err) => {
+            console.log(err);
+          });
+        res.data.songs.forEach((song) => {
+          axios({
+            method: "get",
+            url: `https://api.spotify.com/v1/tracks/${song.id}`,
+          })
+            .then((response) => {
+              setSongs((songs) => [
+                ...songs,
+                {
+                  artist: song.artist,
+                  id: song.id,
+                  title: song.title,
+                  image: response.data.album.images[0].url,
+                },
+              ]);
+            })
+            .catch((err) => console.log(err));
+        });
+      })
+      .then((res) => {
+        setuiLoading(false);
+      })
+      .catch((err) => console.log(err));
+  }
+
+  const handleRequestRegeneration = () => {
+    if (is_expired(localStorage)) {
+      return history.push("/");
+    }
+    set_authentication(localStorage, axios);
+    axios({
+      method: "put",
+      url: `${back_end_uri}/groups/request_regeneration/${group_id}/${get_bearer(localStorage)}`,
+    })
+      .then((res) => {
+        console.log(
+          `You have requested for group ${group_id} to be regenerated`
+        );
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+
+  };
+
+  const handleRegeneratePlaylist = () => {
+    if (is_expired(localStorage)) {
+      return history.push("/");
+    }
+    axios({
+      method: "post",
+      url: `${back_end_uri}/generate_playlist/"new_playlist"/${group_id}/${get_bearer(
+        localStorage
+      )}`,
+    })
+      .then((res) => {
+        refreshPage()
+        // setuiLoading(false);
+      })
+      .catch((err) => {
+        setCopied(
+          "This error has occurred either because there are no songs in one or more of the playlists or because one or more of the playlists are not public. Please modify the playlist settings in Spotify."
+        );
+        // setuiLoading(false);
+        console.log("Error: could not generate playlist");
+      });
+  }
+
+
+
+
+  const handleRemoveSong = async (delIndex, event) => {
+    event.stopPropagation(); //Prevents song from opening when remove button is pressed
+
+    console.log("removing song with key ", delIndex);
+
+    let song_id = songs[delIndex].id;
+    console.log("deleting song ", song_id);
+
+    //make delete request to spotify
+    if (is_expired(localStorage)) {
+      //first check that the bearer has not yet expired first
+      return history.push("/");
+    }
+
+    let tracks = { tracks: [{ uri: `spotify:track:${song_id}` }] };
+    let URL = `https://api.spotify.com/v1/playlists/${playlist_id}/tracks`;
+    let error = null;
+
+    error = await axios({
+      method: "delete",
+      url: URL,
+      data: tracks,
+    })
+      .then((res) => {
+        console.log(res);
+        return false;
+      })
+      .catch((err) => {
+        console.log("Error: could not remove track from playlist");
+        console.log(err);
+        return true;
+      });
+
+    if (error) {
+      return;
+    }
+
+    let newSongs = []; //create a new array with every element except for the one we want to delete
+    let curIndex = 0;
+    songs.forEach((song, i) => {
+      if (i !== delIndex) {
+        //will not concatenate the element at the specified "delete index"
+        newSongs[curIndex] = song;
+        curIndex++;
+      }
+    });
+
+    setSongs(newSongs); //this will cause the page to rerender, with the song deleted
+  };
 
   useEffect(() => {
-    setuiLoading(false);
-  }, []);
+    if (!isGuest && is_expired(localStorage)) {
+      //only non-guests should be booted to the landing page
+      return history.push("/");
+    }
+    set_authentication(localStorage, axios);
 
-  const handleLogout = () => {
-    history.push("/");
-  };
+    if (!isGuest && previousSongsRef.current === songs) {
+      axios({
+        method: "get",
+        url: `${back_end_uri}/groups/get_generated_playlist/${group_id}/${get_bearer(
+          localStorage
+        )}`,
+      })
+        .then((res) => {
+          axios({
+            method: "get",
+            url: `https://api.spotify.com/v1/playlists/${location.state.generated_playlist_id}`,
+          })
+            .then((response) => {
+              setPlaylistAvatar(response.data.images[0].url);
+            })
+            .catch((err) => console.log(err));
+          axios(
+            `${back_end_uri}/groups/get_members_and_owners/${group_id}/${get_bearer(
+              localStorage
+            )}`
+          )
+            .then((res) => {
+              console.log(res);
+              setMembers(res.data.members);
+            })
+            .catch((err) => {
+              console.log(err);
+            });
+          res.data.songs.forEach((song) => {
+            axios({
+              method: "get",
+              url: `https://api.spotify.com/v1/tracks/${song.id}`,
+            })
+              .then((response) => {
+                setSongs((songs) => [
+                  ...songs,
+                  {
+                    artist: song.artist,
+                    id: song.id,
+                    title: song.title,
+                    image: response.data.album.images[0].url,
+                  },
+                ]);
+              })
+              .catch((err) => console.log(err));
+          });
+        })
+        .then((res) => {
+          setuiLoading(false);
+        })
+        .catch((err) => console.log(err));
+    } else if (isGuest) {
+      setuiLoading(false);
+    }
+  }, []);
 
   const handleExpandPlayer = () => {
     if (expandPlayer === false) {
@@ -97,7 +294,43 @@ const Playlist = (props) => {
   };
 
   const handleSongChange = (song) => {
-    setCurrentSong(song);
+    if (is_expired(localStorage)) {
+      return history.push("/");
+    }
+    set_authentication(localStorage, axios);
+    let deviceid;
+    console.log(currentSong);
+    axios({
+      method: "get",
+      url: `https://api.spotify.com/v1/me/player`,
+    })
+      .then((res) => {
+        deviceid = res.data.device.id;
+        // console.log(());
+      })
+      .then((res) => {
+        axios({
+          method: "put",
+          url: `https://api.spotify.com/v1/me/player/play?device_id=${deviceid}`,
+          data: {
+            uris: [`spotify:track:${song.id}`],
+            position_ms: 0,
+            // context_uri: `spotify:playlist:${location.state.generated_playlist_id}`,
+          },
+        })
+          .then((res) => {
+            setIsPlaying(true);
+            // console.log(isPlaying);
+            setCurrentSong(song);
+            // console.log(currentSong.id);
+          })
+          .catch((err) => {
+            console.log(err);
+          });
+      })
+      .catch((err) => {
+        console.log(err);
+      });
   };
 
   if (uiLoading === true) {
@@ -118,21 +351,30 @@ const Playlist = (props) => {
           <AppBar>
             <Toolbar className={classes.toolbar}>
               <Button
-                onClick={() => history.push("/groupmenu")}
+                onClick={handleGoBack}
                 startIcon={<ArrowBackIosIcon className={classes.back} />}
               ></Button>
-              <Typography variant="h5" className={classes.heading}>
-                Playlist
-              </Typography>
-              <Button
-                color="inherit"
-                onClick={() => {
-                  setOpenConfirmLogout(!openConfirmLogout);
-                }}
-                className={classes.logout}
+              <a
+                style={{ textDecoration: "none", display: "flex" }}
+                rel="noopener noreferrer"
+                href={`https://open.spotify.com/playlist/${location.state.generated_playlist_id}`}
+                target="_blank"
               >
-                Logout
-              </Button>
+                <Typography variant="h5" className={classes.heading}>
+                  {location.state.name}
+                </Typography>
+              </a>
+              {!isGuest && (
+                <Button
+                  color="inherit"
+                  onClick={() => {
+                    setOpenConfirmLogout(!openConfirmLogout);
+                  }}
+                  className={classes.logout}
+                >
+                  Logout
+                </Button>
+              )}
               <div style={{ position: "absolute" }}>
                 <Logout
                   open={openConfirmLogout}
@@ -143,39 +385,99 @@ const Playlist = (props) => {
           </AppBar>
           <div>
             <center>
-              <Avatar className={classes.playlistAvatar} variant="rounded" />
+              <Avatar
+                className={classes.playlistAvatar}
+                src={playlistAvatar}
+                variant="rounded"
+              />
             </center>
             <center>
               <Typography className={classes.contributors}>
-                Contributors:
-                {
-                  " Ryan Bello, Mohammad Abualhassan, Dennis Kuzminer, Chris Zheng, Calvin Liang"
-                }
+                Members:
+                {` ${members.toString().replace(",", ", ")}`}
               </Typography>
             </center>
           </div>
+          <Error
+            error={copied}
+            setError={setCopied}
+            severity={copied.includes("error") ? "error" : "success"}
+          />
           <div className={classes.songContainer}>
+            {isOwner && (
+              <div>
+                <div className={classes.buttonContainer}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleAddMusic}
+                  >
+                    Add music
+                  </Button>
+                </div>
+                <div className={classes.buttonContainer}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleRegeneratePlaylist}
+                  >
+                    Regenerate playlist
+                  </Button>
+                </div>
+              </div>
+            )}
+            {!isOwner && (
+              <div className={classes.buttonContainer}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={handleRequestRegeneration}
+                >
+                  Request Regeneration
+                </Button>
+              </div>
+            )}
             {songs.map((song, i) => (
               <div
                 className={classes.cards}
                 key={i}
-                onClick={() => handleSongChange(song)}
+                onClick={() => {
+                  handleSongChange(song);
+                }}
               >
                 <CardContent style={{ marginBottom: "-10px" }}>
-                  <Box display="flex" flexDirection="row">
+                  <Box
+                    display="flex"
+                    flexDirection="row"
+                    justifyContent="space-between"
+                  >
                     <Box>
                       <Avatar
                         className={classes.albumCover}
                         variant="rounded"
+                        src={song.image}
                       />
                     </Box>
-                    <Box>
-                      <Typography style={{ marginLeft: "15px" }}>
-                        {song.title}
-                      </Typography>
-                      <Typography className={classes.artist}>
-                        {song.artist}
-                      </Typography>
+                    <Box className={classes.songDetails}>
+                      <center>
+                        <Typography className={classes.songTitle}>
+                          {song.title}
+                        </Typography>
+                        <Typography className={classes.artist}>
+                          {song.artist}
+                        </Typography>
+                      </center>
+                    </Box>
+                    <Box className={classes.removeButtonContainer}>
+                      {isOwner && (
+                        <IconButton
+                          className={classes.button}
+                          color="primary"
+                          onClick={(event) => handleRemoveSong(i, event)}
+                        >
+                          <RemoveIcon color="secondary" />
+                        </IconButton>
+                      )}
                     </Box>
                   </Box>
                 </CardContent>
@@ -189,6 +491,10 @@ const Playlist = (props) => {
               setExpanded={setExpandPlayer}
               currentSong={currentSong}
               setCurrentSong={setCurrentSong}
+              isPlaying={isPlaying}
+              setIsPlaying={setIsPlaying}
+              playlistTitle={location.state.name}
+              id={location.state.generated_playlist_id}
             />
           </div>
         </div>

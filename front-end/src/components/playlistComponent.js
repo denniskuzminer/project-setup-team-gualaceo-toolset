@@ -1,86 +1,179 @@
-import React, { useEffect, useState } from "react";
-import { Container, CssBaseline, AppBar, Toolbar } from "@material-ui/core";
-import Avatar from "@material-ui/core/avatar";
+import React, { useState } from "react";
 import Accordion from "@material-ui/core/Accordion";
-import TextField from "@material-ui/core/TextField";
 import AccordionDetails from "@material-ui/core/AccordionDetails";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
 import AccordionSummary from "@material-ui/core/AccordionSummary";
 import withStyles from "@material-ui/core/styles/withStyles";
-import { useHistory } from "react-router-dom";
-import Button from "@material-ui/core/Button";
 import IconButton from "@material-ui/core/IconButton";
-import ArrowBackIosIcon from "@material-ui/icons/ArrowBackIos";
-import { Typography, Card, CardContent, Divider } from "@material-ui/core";
-import Box from "@material-ui/core/Box";
-import AddIcon from '@material-ui/icons/Add';
-import RemoveIcon from '@material-ui/icons/Remove';
+import { Typography, Card, Divider, Avatar } from "@material-ui/core";
+import AddIcon from "@material-ui/icons/Add";
+import RemoveIcon from "@material-ui/icons/Remove";
 
-import styles from "../styles/playlistComponentStyles.js"
+import styles from "../styles/playlistComponentStyles.js";
+import { get_bearer, set_authentication } from "../components/authentication";
+import axios from "axios";
 
-const pressButton = (event, added, setAdded) => {
-    event.stopPropagation() //Prevents dropdown from opening when button is pressed
-    setAdded(!added); 
+require("dotenv").config();
+let back_end_uri = process.env.REACT_APP_BACK_END_URI
 
-    //In a later sprint (2 or 3), we should also actually add the playlist to the pool
-}
+const pool_has_playlist = (pool, playlist_id) => {
+  for (let i = 0; i < pool.length; i++) {
+    if (pool[i].playlist_id === playlist_id) {
+      //playlist was added by the current user to the pool already
+      return true;
+    }
+  }
+  return false;
+};
+
+const pressButton = (
+  event,
+  added,
+  setAdded,
+  playlist,
+  group_id,
+  buttonEnabled,
+  setButtonEnabled
+) => {
+  if (!buttonEnabled) {
+    return;
+  }
+  setButtonEnabled(false);
+  event.stopPropagation(); //Prevents dropdown from opening when button is pressed
+  const playlist_id = playlist.id;
+  if (!added) {
+    axios({
+      method: "put",
+      url: `${back_end_uri}/groups/add_to_pool/${group_id}/${playlist_id}/${get_bearer(
+        localStorage
+      )}`,
+    })
+      .then((res) => {
+        setAdded(true);
+        setButtonEnabled(true);
+      })
+      .catch((err) => {
+        console.log(err);
+        console.log("Error encountered adding the playlist to the group");
+        setButtonEnabled(true);
+      });
+  } else {
+    //should actually remove the group
+    axios({
+      method: "delete",
+      url: `${back_end_uri}/groups/remove_from_pool/${group_id}/${playlist_id}/${get_bearer(
+        localStorage
+      )}`,
+    })
+      .then((res) => {
+        setAdded(false);
+        setButtonEnabled(true);
+      })
+      .catch((err) => {
+        console.log(err);
+        console.log("Error encountered removing the playlist from the group");
+        setButtonEnabled(true);
+      });
+  }
+  //In a later sprint (2 or 3), we should also actually add the playlist to the pool
+};
 
 const Playlist = (props) => {
-    const playlist = props.playlist 
-    const { classes } = props
-    const [added, setAdded] = useState(false); //keeps track of whether the playlist has been added to the pool or not. 
-    let buttonIcon;
+  
+  const playlist = props.playlist;
+  const group_id = props.group_id;
+  const pool = props.pool;
+  const { classes } = props;
+  let addedAtLoad = pool_has_playlist(pool, playlist.id);
+  const [added, setAdded] = useState(addedAtLoad); //keeps track of whether the playlist has been added to the pool or not.
+  const [buttonEnabled, setButtonEnabled] = useState(true);
+  let buttonIcon;
 
-    if (!added) { /*Icon must update depending on whether the playlist is added or not*/
-        buttonIcon = <AddIcon color = 'secondary' />    
-    } else {
-        buttonIcon = <RemoveIcon color = 'secondary' />
-    }
+  if (!added) {
+    /*Icon must update depending on whether the playlist is added or not*/
+    buttonIcon = <AddIcon color="secondary" />;
+  } else {
+    buttonIcon = <RemoveIcon color="secondary" />;
+  }
+  set_authentication(localStorage, axios);
+  let tracks = playlist.tracks;
 
-    console.log("playlist name: " , playlist.name)
-    return (
-    <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <div className={classes.summaryContainer}>
-                <div className ={classes.imageContainer}>
-                    {/*This should be the playlist image pulled from Spotify*/}
-                    <img className={classes.playlistImage} src ={playlist.images[0].url} alt ='playlist'/> 
-                </div>
-                <div className={classes.playlistNameContainer}>
-                    {playlist.name}
-                </div>
-                <div className={classes.buttonContainer}>
-                    <IconButton className={classes.button} color = "primary"  onFocus={(event) => event.stopPropagation()} onClick={(event) => pressButton(event, added, setAdded)}>
-                        {buttonIcon} 
-                    </IconButton>
-                </div>
-            </div>
-        </AccordionSummary>
-        <Divider />
+  /*
+    console.log("href = " , playlist.tracks)
+    axios(playlist.tracks.href)
+        .then((response) => {
+            tracks = response.data
+        })
+        .catch((err) => {
+            console.log("Error retrieving playlist tracks")
+            console.error(err)
+            return
+        })
+    */
+
+  return (
+    <Card className={classes.cardSquareEdges}>
+      <div className={classes.summaryContainer}>
+        <div className={classes.imageContainer}>
+          {/*This should be the playlist image pulled from Spotify*/}
+          {playlist.images[0] && (
+            <Avatar
+              variant="rounded"
+              className={classes.playlistImage}
+              src={playlist.images[0].url}
+              alt="playlist"
+            />
+          )}
+        </div>
+        <div className={classes.playlistNameContainer}>{playlist.name}</div>
+        <div className={classes.buttonContainer}>
+          <IconButton
+            className={classes.button}
+            color="primary"
+            onFocus={(event) => event.stopPropagation()}
+            onClick={(event) =>
+              pressButton(
+                event,
+                added,
+                setAdded,
+                playlist,
+                group_id,
+                buttonEnabled,
+                setButtonEnabled
+              )
+            }
+          >
+            {buttonIcon}
+          </IconButton>
+        </div>
+      </div>
+      {/*<Divider />
+      {tracks.items &&
         <AccordionDetails className={classes.accordionDetails}>
-            <div className={classes.tracklistContainer}>
-                {playlist.tracks.items.map((curSong) => (
-                    <Song classes={classes} song={curSong} /> //Creates a song card for each song in the playlist
-                ))}
-            </div>
+          <div className={classes.tracklistContainer}>
+            {tracks.items.map((curSong) => (
+              <Song classes={classes} song={curSong} /> //Creates a song card for each song in the playlist
+            ))}
+          </div>
         </AccordionDetails>
-    </Accordion>
-    );
-}
+      } */}
+    </Card>
+  );
+};
 
 const Song = (props) => {
-    const song = props.song;
-    const classes = props.classes;
-    return (
-        <Card className={classes.songCard} variant="square">
-            <Typography align="center" className={classes.songName}>
-                {song.name}
-            </Typography>
-            <Typography align="center" className={classes.artistName}>
-                {song.artists[0].name}
-            </Typography>
-        </Card>
-    )
-}
+  const song = props.song.track;
+  const classes = props.classes;
+  return (
+    <Card className={classes.songCard} variant="square">
+      <Typography align="center" className={classes.songName}>
+        {song.name}
+      </Typography>
+      <Typography align="center" className={classes.artistName}>
+        {song.artists[0].name}
+      </Typography>
+    </Card>
+  );
+};
 
 export default withStyles(styles)(Playlist);

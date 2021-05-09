@@ -1,18 +1,11 @@
 import React, { useEffect, useState } from "react";
 import withStyles from "@material-ui/core/styles/withStyles";
-import {
-  Typography,
-  Card,
-  CardContent,
-  Divider,
-  DialogTitle,
-} from "@material-ui/core";
+import { Typography, DialogTitle } from "@material-ui/core";
 import { Container, CssBaseline, AppBar, Toolbar } from "@material-ui/core";
-import Avatar from "@material-ui/core/avatar";
+import Avatar from "@material-ui/core/Avatar";
 import Box from "@material-ui/core/Box";
 import Slider from "@material-ui/core/Slider";
 import Dialog from "@material-ui/core/Dialog";
-import DialogActions from "@material-ui/core/DialogActions";
 import DialogContent from "@material-ui/core/DialogContent";
 import Slide from "@material-ui/core/Slide";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
@@ -21,6 +14,12 @@ import PauseIcon from "@material-ui/icons/Pause";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import SkipPreviousIcon from "@material-ui/icons/SkipPrevious";
 import SkipNextIcon from "@material-ui/icons/SkipNext";
+import { useHistory } from "react-router-dom";
+
+import axios from "axios";
+import { set_authentication, get_bearer, is_expired } from "./authentication";
+
+import _ from "lodash";
 
 import styles from "../styles/musicControllerStyles.js";
 
@@ -28,9 +27,9 @@ const TransitionUp = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
-const TransitionDown = React.forwardRef(function Transition(props, ref) {
-  return <Slide direction="down" ref={ref} {...props} />;
-});
+// const TransitionDown = React.forwardRef(function Transition(props, ref) {
+//   return <Slide direction="down" ref={ref} {...props} />;
+// });
 
 const CollapsedSlider = withStyles({
   root: {
@@ -55,6 +54,7 @@ const CollapsedSlider = withStyles({
 })(Slider);
 
 const MusicController = (props) => {
+  let history = useHistory();
   const [expanded, setExpanded] = [props.expanded, props.setExpanded];
   const [currentSong, setCurrentSong] = [
     props.currentSong,
@@ -62,12 +62,29 @@ const MusicController = (props) => {
   ];
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = [props.isPlaying, props.setIsPlaying];
 
   const { classes } = props;
 
   const handleSliderChange = (event, newValue) => {
-    setCurrentTime(newValue);
+    if (is_expired(localStorage)) {
+      return history.push("/"); //should this just be history.push("/")?
+    }
+    set_authentication(localStorage, axios);
+    console.log(newValue);
+    axios({
+      method: "put",
+      url: `https://api.spotify.com/v1/me/player/seek?position_ms=${
+        newValue * 1000
+      }`,
+    })
+      .then((res) => {
+        console.log(res);
+        setCurrentTime(newValue);
+      })
+      .catch((err) => {
+        console.log(err);
+      });
   };
 
   const formatTime = (secs) => {
@@ -75,28 +92,113 @@ const MusicController = (props) => {
     let seconds = Math.ceil(secs - minutes * 60);
 
     if (seconds < 10) seconds = `0${seconds}`;
-
-    return `${minutes}:${seconds}`;
+    let retval = `${minutes}:${seconds}`;
+    if (retval.includes(":60")) {
+      retval = `${minutes + 1}:00`;
+    }
+    return retval;
   };
 
   const handlePrevious = () => {};
 
   const handlePlay = () => {
-    //Some api call
-    // .then
-    setIsPlaying(!isPlaying);
+    if (is_expired(localStorage)) {
+      return history.push("/"); //should this just be history.push("/")?
+    }
+    set_authentication(localStorage, axios);
+    let deviceid;
+    axios({
+      method: "get",
+      url: `https://api.spotify.com/v1/me/player`,
+    })
+      .then((res) => {
+        deviceid = res.data.device.id;
+        axios({
+          method: "put",
+          url: `https://api.spotify.com/v1/me/player/${
+            !isPlaying ? "play" : "pause"
+          }?device_id=${deviceid}`,
+          data: {
+            uris:
+              props.currentSong == currentSong
+                ? null
+                : [`spotify:track:${currentSong.id}`],
+            // context_uri: `spotify:playlist:${currentSong.id}`
+          },
+        })
+          .then((res) => {
+            // console.log(res);
+            // console.log(currentSong.id);
+            setIsPlaying(!isPlaying);
+          })
+          .catch((err) => {
+            console.log(err);
+          });
+      })
+      .catch((err) => {
+        console.log(err);
+      });
   };
+
+  // useEffect(() => {
+  //   console.log("song updated");
+  // }, [props.currentSong]);
 
   const handleNext = () => {};
 
   useEffect(() => {
-    setDuration("280");
-  }, []);
+    console.log(props.id);
+    const source = axios.CancelToken.source();
+
+    setInterval(() => {
+      // setCurrentTime((currentTime) => currentTime + 1);
+      if (isPlaying) {
+        if (is_expired(localStorage)) {
+          return history.push("/"); //should this just be history.push("/")?
+        }
+        set_authentication(localStorage, axios);
+        axios({
+          method: "get",
+          cancelToken: source.token,
+          url: `https://api.spotify.com/v1/me/player/currently-playing?market=ES`,
+        })
+          .then((res) => {
+            console.log(res);
+            if (res.data.item.duration_ms !== 0) {
+              // console.log(res.data.item.duration_ms);
+              setDuration(res.data.item.duration_ms / 1000);
+              setCurrentTime(res.data.progress_ms / 1000);
+              // console.log(duration);
+              // console.log(currentTime);
+            }
+          })
+          .catch((error) => {
+            if (axios.isCancel(error)) {
+            } else {
+              throw error;
+            }
+            console.log(error);
+          });
+      }
+    }, 1000);
+
+    return () => {
+      source.cancel();
+    };
+  }, [props.currentSong]);
+
+  // if (isPlaying) {
+  //   // setInterval(() => {
+  //   // setCurrentTime((currentTime) => currentTime + 1);
+  //   console.log("hello");
+  //   // }, 1000);
+  // }
 
   if (expanded === false) {
     if (currentSong) {
       return (
         <div style={{ position: "fixed", bottom: 0, width: "100%" }}>
+          <CssBaseline />
           <CollapsedSlider
             value={currentTime}
             max={duration}
@@ -110,6 +212,7 @@ const MusicController = (props) => {
                   <Avatar
                     className={classes.collapsedAlbumCover}
                     variant="square"
+                    src={currentSong.image}
                   />
                 </Box>
                 <Box>
@@ -147,9 +250,16 @@ const MusicController = (props) => {
                   <ExpandMoreIcon className={classes.collapse} />
                 </IconButton>
                 <DialogTitle>
-                  <Typography className={classes.playlistTitle}>
-                    {"Playlist Title"}
-                  </Typography>
+                  <a
+                    style={{ textDecoration: "none", display: "flex" }}
+                    rel="noopener noreferrer"
+                    href={`https://open.spotify.com/playlist/${props.id}`}
+                    target="_blank"
+                  >
+                    <Typography className={classes.playlistTitle}>
+                      {props.playlistTitle}
+                    </Typography>
+                  </a>
                 </DialogTitle>
                 <div></div>
                 <div></div>
@@ -160,6 +270,7 @@ const MusicController = (props) => {
                 <Avatar
                   className={classes.expandedAlbumCover}
                   variant="rounded"
+                  src={currentSong.image}
                 />
               </center>
               <div className={classes.expandedDetails}>
@@ -186,14 +297,20 @@ const MusicController = (props) => {
                 </center>
                 <center>
                   <Toolbar className={classes.controls}>
-                    <IconButton color="secondary" onClick={handlePrevious}>
-                      <SkipPreviousIcon />
+                    <IconButton
+                      color="secondary"
+                      // onClick={handlePrevious}
+                    >
+                      {/* <SkipPreviousIcon /> */}
                     </IconButton>
                     <IconButton color="secondary" onClick={handlePlay}>
                       {!isPlaying ? <PlayArrowIcon /> : <PauseIcon />}
                     </IconButton>
-                    <IconButton color="secondary" onClick={handleNext}>
-                      <SkipNextIcon />
+                    <IconButton
+                      color="secondary"
+                      //onClick={handleNext}
+                    >
+                      {/* <SkipNextIcon /> */}
                     </IconButton>
                   </Toolbar>
                 </center>

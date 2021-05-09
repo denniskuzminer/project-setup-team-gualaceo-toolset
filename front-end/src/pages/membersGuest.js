@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Container, CssBaseline, AppBar, Toolbar } from "@material-ui/core";
-import Avatar from "@material-ui/core/avatar";
+import Avatar from "@material-ui/core/Avatar";
 import withStyles from "@material-ui/core/styles/withStyles";
 import { useHistory } from "react-router-dom";
 import Button from "@material-ui/core/Button";
@@ -8,12 +8,14 @@ import ArrowBackIosIcon from "@material-ui/icons/ArrowBackIos";
 import { Typography, Card, CardContent } from "@material-ui/core";
 import Box from "@material-ui/core/Box";
 import Loading from "../components/loading";
-import styles from "../styles/members.js";
+
+import styles from "../styles/membersStyles.js";
 
 const MembersGuest = (props) => {
   let history = useHistory();
   const { classes } = props;
   const [uiLoading, setuiLoading] = useState(true);
+
   const memberlist = [
     { name: "Ryan B", owner: false, self: false },
     { name: "Alexa H", owner: true, self: false },
